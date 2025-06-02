@@ -9478,20 +9478,9 @@ function AppContent() {
     console.log("已截斷助手說話並開啟聆聽模式");
   };
 
-  // 切換 PTT 和 VAD 模式的函數（保持原有功能但更新按鈕邏輯）
-  const toggleConversationMode = () => {
-    const newMode = !isPTTActive;
-    setIsPTTActive(newMode);
-    
-    // 保存到 localStorage
-    localStorage.setItem("conversationMode", newMode ? "PTT" : "VAD");
-    
-    console.log(`切換到${newMode ? 'PTT' : 'VAD'}模式`);
-  };
-
   useEffect(() => {
-    // 修改: 移除從 localStorage 讀取的邏輯，始終預設為 VAD 模式
-    setIsPTTActive(false); // 始終預設為 VAD 模式（持續對話）
+    // 始終預設為 VAD 模式（持續對話）
+    setIsPTTActive(false);
     localStorage.setItem("conversationMode", "VAD");
     
     const storedLogsExpanded = localStorage.getItem("logsExpanded");
