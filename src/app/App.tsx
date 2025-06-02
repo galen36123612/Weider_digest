@@ -8767,7 +8767,7 @@ function AppContent() {
     }
 
     // 直接觸發 AI 響應，讓 AI 主動說話
-    const welcomeMessage = "你好！我是你的 AI 營養師，很高興為你服務。請告訴我你想了解什麼營養方面的問題，或者我可以幫你制定營養計劃。";
+    const welcomeMessage = "請問最近腸胃有什麼不舒服的地方嗎？";
     
     // 創建一個 AI 助手消息
     sendClientEvent(
