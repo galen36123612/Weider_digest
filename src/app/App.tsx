@@ -8148,6 +8148,40 @@ function AppContent() {
     sendClientEvent({ type: "response.create" }, "(trigger response)");
   };
 
+  // 新增: 發送模擬用戶消息的函數
+  const sendSimulatedUserMessage = (message: string) => {
+    if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open") {
+      console.warn("Cannot send simulated message: session not connected");
+      return;
+    }
+
+    if (!message.trim()) {
+      console.warn("Cannot send empty simulated message");
+      return;
+    }
+
+    // 取消任何正在進行的助手語音
+    cancelAssistantSpeech();
+
+    // 發送模擬的用戶消息
+    sendClientEvent(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: message.trim() }],
+        },
+      },
+      "(send simulated user message)"
+    );
+
+    // 觸發響應
+    sendClientEvent({ type: "response.create" }, "(trigger response for simulated message)");
+    
+    console.log(`Sent simulated user message: ${message}`);
+  };
+
   const handleTalkButtonDown = () => {
     if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open")
       return;
@@ -8286,6 +8320,18 @@ function AppContent() {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* 測试按鈕 - 可選 */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={() => sendSimulatedUserMessage("你好，我想了解營養計劃")}
+              className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm"
+              disabled={sessionStatus !== "CONNECTED"}
+              title="發送測試消息"
+            >
+              測試
+            </button>
+          )}
+          
           {/* 麥克風按鈕 - 保持原來的樣式和圖標 */}
           <button
             onClick={handleMicrophoneClick}
@@ -8329,6 +8375,7 @@ function AppContent() {
           userText={userText}
           setUserText={setUserText}
           onSendMessage={handleSendTextMessage}
+          sendSimulatedMessage={sendSimulatedUserMessage}
           downloadRecording={downloadRecording}
           canSend={
             sessionStatus === "CONNECTED" &&
