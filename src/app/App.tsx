@@ -6577,7 +6577,7 @@ export default App;*/
 
 // 0530 Testing V6
 
-/*"use client";
+"use client";
 
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -6955,7 +6955,7 @@ function AppContent() {
     sendClientEvent(sessionUpdateEvent);
 
     if (shouldTriggerResponse) {
-      sendSimulatedUserMessage("您好，很高興為您服務！");
+      sendSimulatedUserMessage("請問最近腸胃有什麼不舒服的地方嗎");
     }
   };
 
@@ -7239,11 +7239,11 @@ function App() {
   );
 }
 
-export default App;*/
+export default App;
 
 // 0602 Testing ----> final version checkpoint
 
-"use client";
+/*"use client";
 
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -7799,7 +7799,7 @@ function App() {
   );
 }
 
-export default App;
+export default App;*/
 
 // 0602 Testing remove session.id, start at: --> in hooks/useHandleServerEvent.ts
 
