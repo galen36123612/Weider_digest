@@ -8375,7 +8375,6 @@ function AppContent() {
           userText={userText}
           setUserText={setUserText}
           onSendMessage={handleSendTextMessage}
-          sendSimulatedMessage={sendSimulatedUserMessage}
           downloadRecording={downloadRecording}
           canSend={
             sessionStatus === "CONNECTED" &&
