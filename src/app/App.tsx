@@ -7803,7 +7803,7 @@ export default App;*/
 
 // 0602 Testing remove session.id, start at: --> in hooks/useHandleServerEvent.ts
 
-"use client";
+/*"use client";
 
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -8299,6 +8299,646 @@ function AppContent() {
            maxHeight: '100dvh'
          }}>
       
+      {}
+      <div className="p-3 sm:p-5 text-lg font-semibold flex justify-between items-center flex-shrink-0 border-b border-gray-200">
+        <div
+          className="flex items-center cursor-pointer"
+          onClick={() => window.location.reload()}
+        >
+          <div>
+            <Image
+              src="/Weider_logo_1.png"
+              alt="Weider Logo"
+              width={40}
+              height={40}
+              className="mr-2"
+            />
+          </div>
+          <div>
+            AI 營養師
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={() => sendSimulatedUserMessage("你好，我想了解營養計劃")}
+              className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm"
+              disabled={sessionStatus !== "CONNECTED"}
+              title="發送測試消息"
+            >
+              測試
+            </button>
+          )}
+          
+          {}
+          <button
+            onClick={handleMicrophoneClick}
+            className={`w-12 h-12 rounded-full flex items-center justify-center font-medium transition-all duration-200 relative ${
+              isPTTActive 
+                ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-md animate-pulse' 
+                : 'bg-green-500 text-white hover:bg-green-600 shadow-md animate-pulse'
+            }`}
+            title={
+              isOutputAudioBufferActive 
+                ? "點擊打斷 AI 講話" 
+                : isPTTActive 
+                  ? "點擊切換到持續對話模式" 
+                  : "持續對話模式"
+            }
+          >
+            {}
+            <svg 
+              width="20" 
+              height="20" 
+              viewBox="0 0 24 24" 
+              fill="currentColor"
+            >
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+            {}
+            {!isPTTActive && isListening && !isOutputAudioBufferActive && (
+              <div className="absolute -top-1 -right-1">
+                <div className="w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
+                <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full"></div>
+              </div>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {}
+      <div className="flex flex-1 gap-2 px-2 overflow-hidden relative min-h-0">
+        <Transcript
+          userText={userText}
+          setUserText={setUserText}
+          onSendMessage={handleSendTextMessage}
+          downloadRecording={downloadRecording}
+          canSend={
+            sessionStatus === "CONNECTED" &&
+            dataChannel?.readyState === "open"
+          }
+          handleTalkButtonDown={handleTalkButtonDown}
+          handleTalkButtonUp={handleTalkButtonUp}
+          isPTTUserSpeaking={isPTTUserSpeaking}
+          isPTTActive={isPTTActive}
+        />
+
+        <Events isExpanded={isEventsPaneExpanded} />
+      </div>
+    </div>
+  );
+}
+
+// Main App component with Suspense wrapper
+function App() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-lg">載入中...</div>
+      </div>
+    }>
+      <AppContent />
+    </Suspense>
+  );
+}
+
+export default App;*/
+
+// 0602 welcome title -----> Testing
+
+"use client";
+
+import React, { useEffect, useRef, useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+
+import Image from "next/image";
+
+// UI components
+import Transcript from "./components/Transcript";
+import Events from "./components/Events";
+
+// Types
+import { AgentConfig, SessionStatus } from "@/app/types";
+
+// Context providers & hooks
+import { useTranscript } from "@/app/contexts/TranscriptContext";
+import { useEvent } from "@/app/contexts/EventContext";
+import { useHandleServerEvent } from "./hooks/useHandleServerEvent";
+
+// Agent configs
+import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
+
+import useAudioDownload from "./hooks/useAudioDownload";
+
+// Separate the main app logic into a component that uses search params
+function AppContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // URL 參數管理函數
+  function setSearchParam(key: string, value: string) {
+    // 先把現有參數讀進來
+    const params = new URLSearchParams(searchParams.toString());
+    // 設定/更新你想要的參數
+    params.set(key, value);
+    // 用 router 替換網址，不會跳頁（不刷新）
+    router.replace(`?${params.toString()}`);
+  }
+
+  const { transcriptItems } = useTranscript();
+  const { logClientEvent, logServerEvent } = useEvent();
+
+  const [selectedAgentName, setSelectedAgentName] = useState<string>("");
+  const [selectedAgentConfigSet, setSelectedAgentConfigSet] = useState<
+    AgentConfig[] | null
+  >(null);
+
+  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const audioElement = useRef<HTMLAudioElement | null>(null);
+  const [sessionStatus, setSessionStatus] =
+    useState<SessionStatus>("DISCONNECTED");
+
+  const [isEventsPaneExpanded, setIsEventsPaneExpanded] = 
+    useState<boolean>(false);
+  const [userText, setUserText] = useState<string>("");
+  // 修改: 預設為 false (VAD模式 - 持續聆聽)
+  const [isPTTActive, setIsPTTActive] = useState<boolean>(false);
+  const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
+  const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] =
+    useState<boolean>(true);
+  const [isListening, setIsListening] = useState<boolean>(false);
+
+  const [isOutputAudioBufferActive, setIsOutputAudioBufferActive] =
+    useState<boolean>(false);
+
+  // Initialize the recording hook.
+  const { startRecording, stopRecording, downloadRecording } =
+    useAudioDownload();
+
+  const sendClientEvent = (eventObj: any, eventNameSuffix = "") => {
+    if (dataChannel && dataChannel.readyState === "open") {
+      logClientEvent(eventObj, eventNameSuffix);
+      dataChannel.send(JSON.stringify(eventObj));
+    } else {
+      logClientEvent(
+        { attemptedEvent: eventObj.type },
+        "error.data_channel_not_open"
+      );
+      console.error(
+        "Failed to send message - no data channel available",
+        eventObj
+      );
+    }
+  };
+
+  const handleServerEventRef = useHandleServerEvent({
+    setSessionStatus,
+    selectedAgentName,
+    selectedAgentConfigSet,
+    sendClientEvent,
+    setSelectedAgentName,
+    setIsOutputAudioBufferActive,
+  });
+
+  useEffect(() => {
+    let finalAgentConfig = searchParams.get("agentConfig");
+    if (!finalAgentConfig || !allAgentSets[finalAgentConfig]) {
+      finalAgentConfig = defaultAgentSetKey;
+      setSearchParam("agentConfig", finalAgentConfig);
+      return;
+    }
+
+    const agents = allAgentSets[finalAgentConfig];
+    const agentKeyToUse = agents[0]?.name || "";
+
+    setSelectedAgentName(agentKeyToUse);
+    setSelectedAgentConfigSet(agents);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (selectedAgentName && sessionStatus === "DISCONNECTED") {
+      startSession();
+    }
+  }, [selectedAgentName]);
+
+  useEffect(() => {
+    if (
+      sessionStatus === "CONNECTED" &&
+      selectedAgentConfigSet &&
+      selectedAgentName
+    ) {
+      // 移除顯示 Agent breadcrumb，直接更新 session
+      updateSession(); // 更新 session
+      
+      // 連接成功後延遲發送歡迎消息，讓 AI 主動開始對話
+      setTimeout(() => {
+        sendAIWelcomeMessage();
+      }, 1500); // 延遲1.5秒確保 session 完全初始化
+    }
+  }, [selectedAgentConfigSet, selectedAgentName, sessionStatus]);
+
+  useEffect(() => {
+    if (sessionStatus === "CONNECTED") {
+      console.log(
+        `updatingSession, isPTTActive=${isPTTActive} sessionStatus=${sessionStatus}`
+      );
+      updateSession();
+    }
+  }, [isPTTActive]);
+
+  // 簡化的連接函數 - 移除權限彈窗
+  async function startSession() {
+    if (sessionStatus !== "DISCONNECTED") return;
+    await connectToRealtime();
+  }
+
+  // 實際連接到 Realtime API 的函數
+  async function connectToRealtime() {
+    setSessionStatus("CONNECTING");
+
+    try {
+      // Get a session token for OpenAI Realtime API
+      logClientEvent({ url: "/api/session" }, "fetch_session_token_request");
+      const tokenResponse = await fetch("/api/session");
+      const data = await tokenResponse.json();
+      logServerEvent(data, "fetch_session_token_response");
+
+      if (!data.client_secret?.value) {
+        logClientEvent(data, "error.no_ephemeral_key");
+        console.error("No ephemeral key provided by the server");
+        setSessionStatus("DISCONNECTED");
+        return;
+      }
+
+      const EPHEMERAL_KEY = data.client_secret.value;
+
+      // Create a peer connection
+      const pc = new RTCPeerConnection();
+      peerConnection.current = pc;
+
+      // Set up to play remote audio from the model
+      audioElement.current = document.createElement("audio");
+      audioElement.current.autoplay = isAudioPlaybackEnabled;
+      pc.ontrack = (e) => {
+        if (audioElement.current) {
+          audioElement.current.srcObject = e.streams[0];
+        }
+      };
+
+      // Add local audio track for microphone input in the browser
+      const newMs = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      pc.addTrack(newMs.getTracks()[0]);
+
+      // Set up data channel for sending and receiving events
+      const dc = pc.createDataChannel("oai-events");
+      setDataChannel(dc);
+
+      // Data channel event listeners
+      dc.addEventListener("open", () => {
+        logClientEvent({}, "data_channel.open");
+        setSessionStatus("CONNECTED");
+      });
+      
+      dc.addEventListener("close", () => {
+        logClientEvent({}, "data_channel.close");
+        setSessionStatus("DISCONNECTED");
+      });
+      
+      dc.addEventListener("error", (err: any) => {
+        logClientEvent({ error: err }, "data_channel.error");
+      });
+      
+      dc.addEventListener("message", (e: MessageEvent) => {
+        const eventData = JSON.parse(e.data);
+        handleServerEventRef.current(eventData);
+        
+        // 檢測語音輸入狀態
+        if (eventData.type === "input_audio_buffer.speech_started") {
+          setIsListening(true);
+        } else if (eventData.type === "input_audio_buffer.speech_stopped" || 
+                   eventData.type === "input_audio_buffer.committed") {
+          setIsListening(false);
+        }
+      });
+
+      // Start the session using the Session Description Protocol (SDP)
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const baseUrl = "https://api.openai.com/v1/realtime";
+      const model = "gpt-4o-realtime-preview-2024-12-17";
+      const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${EPHEMERAL_KEY}`,
+          "Content-Type": "application/sdp",
+        },
+      });
+
+      await pc.setRemoteDescription({
+        type: "answer" as RTCSdpType,
+        sdp: await sdpResponse.text(),
+      });
+
+    } catch (err) {
+      console.error("Error connecting to realtime:", err);
+      setSessionStatus("DISCONNECTED");
+    }
+  }
+
+  function stopSession() {
+    if (dataChannel) {
+      dataChannel.close();
+      setDataChannel(null);
+    }
+
+    if (peerConnection.current) {
+      peerConnection.current.getSenders().forEach((sender) => {
+        if (sender.track) {
+          sender.track.stop();
+        }
+      });
+      peerConnection.current.close();
+      peerConnection.current = null;
+    }
+
+    setSessionStatus("DISCONNECTED");
+    setIsListening(false);
+  }
+
+  const updateSession = () => {
+    sendClientEvent(
+      { type: "input_audio_buffer.clear" },
+      "clear audio buffer on session update"
+    );
+
+    const currentAgent = selectedAgentConfigSet?.find(
+      (a) => a.name === selectedAgentName
+    );
+
+    const turnDetection = isPTTActive
+      ? null
+      : {
+          type: "server_vad",
+          threshold: 0.5,  // 降低閾值，讓語音檢測更敏感
+          prefix_padding_ms: 300,
+          silence_duration_ms: 800,  // 增加靜音時間，避免太快觸發
+          create_response: true,
+        };
+
+    const instructions = currentAgent?.instructions || "";
+    const tools = currentAgent?.tools || [];
+
+    const sessionUpdateEvent = {
+      type: "session.update",
+      session: {
+        modalities: ["text", "audio"],
+        instructions,
+        voice: "sage",
+        input_audio_transcription: { model: "whisper-1" },
+        turn_detection: turnDetection,
+        tools,
+      },
+    };
+
+    sendClientEvent(sessionUpdateEvent);
+  };
+
+  const cancelAssistantSpeech = async () => {
+    const mostRecentAssistantMessage = [...transcriptItems]
+      .reverse()
+      .find((item) => item.role === "assistant");
+
+    if (!mostRecentAssistantMessage) {
+      console.warn("can't cancel, no recent assistant message found");
+      return;
+    }
+    if (mostRecentAssistantMessage.status === "IN_PROGRESS") {
+      sendClientEvent(
+        { type: "response.cancel" },
+        "(cancel due to user interruption)"
+      );
+    }
+
+    if (isOutputAudioBufferActive) {
+      sendClientEvent(
+        { type: "output_audio_buffer.clear" },
+        "(cancel due to user interruption)"
+      );
+    }
+  };
+
+  const handleSendTextMessage = () => {
+    if (!userText.trim()) return;
+    cancelAssistantSpeech();
+
+    sendClientEvent(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: userText.trim() }],
+        },
+      },
+      "(send user text message)"
+    );
+    setUserText("");
+
+    sendClientEvent({ type: "response.create" }, "(trigger response)");
+  };
+
+  // 新增: 讓 AI 發送歡迎消息的函數
+  const sendAIWelcomeMessage = () => {
+    if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open") {
+      console.warn("Cannot send AI welcome message: session not connected");
+      return;
+    }
+
+    // 直接觸發 AI 響應，讓 AI 主動說話
+    const welcomeMessage = "你好！我是你的 AI 營養師，很高興為你服務。請告訴我你想了解什麼營養方面的問題，或者我可以幫你制定營養計劃。";
+    
+    // 創建一個 AI 助手消息
+    sendClientEvent(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "input_text", text: welcomeMessage }],
+        },
+      },
+      "(send AI welcome message)"
+    );
+
+    // 觸發 AI 說出這個歡迎消息
+    sendClientEvent({ type: "response.create" }, "(trigger AI welcome speech)");
+    
+    console.log("AI welcome message sent");
+  };
+
+  // 新增: 發送模擬用戶消息的函數
+  const sendSimulatedUserMessage = (message: string) => {
+    if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open") {
+      console.warn("Cannot send simulated message: session not connected");
+      return;
+    }
+
+    if (!message.trim()) {
+      console.warn("Cannot send empty simulated message");
+      return;
+    }
+
+    // 取消任何正在進行的助手語音
+    cancelAssistantSpeech();
+
+    // 發送模擬的用戶消息
+    sendClientEvent(
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: message.trim() }],
+        },
+      },
+      "(send simulated user message)"
+    );
+
+    // 觸發響應
+    sendClientEvent({ type: "response.create" }, "(trigger response for simulated message)");
+    
+    console.log(`Sent simulated user message: ${message}`);
+  };
+
+  const handleTalkButtonDown = () => {
+    if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open")
+      return;
+    cancelAssistantSpeech();
+
+    setIsPTTUserSpeaking(true);
+    setIsListening(true);
+    sendClientEvent({ type: "input_audio_buffer.clear" }, "clear PTT buffer");
+  };
+
+  const handleTalkButtonUp = () => {
+    if (
+      sessionStatus !== "CONNECTED" ||
+      dataChannel?.readyState !== "open" ||
+      !isPTTUserSpeaking
+    )
+      return;
+
+    setIsPTTUserSpeaking(false);
+    setIsListening(false);
+    sendClientEvent({ type: "input_audio_buffer.commit" }, "commit PTT");
+    sendClientEvent({ type: "response.create" }, "trigger response PTT");
+  };
+
+  // 處理麥克風按鈕點擊 - 新增打斷功能
+  const handleMicrophoneClick = () => {
+    // 如果 ChatGPT 正在講話，打斷它並開始收聽
+    if (isOutputAudioBufferActive) {
+      console.log("打斷 ChatGPT 講話");
+      cancelAssistantSpeech();
+      // 打斷後如果是 VAD 模式，會自動開始收聽
+      // 如果是 PTT 模式，用戶需要按住說話按鈕
+      return;
+    }
+    
+    // 否則切換對話模式
+    toggleConversationMode();
+  };
+
+  // 切換 PTT 和 VAD 模式的函數
+  const toggleConversationMode = () => {
+    const newMode = !isPTTActive;
+    setIsPTTActive(newMode);
+    
+    // 保存到 localStorage
+    localStorage.setItem("conversationMode", newMode ? "PTT" : "VAD");
+    
+    console.log(`切換到${newMode ? 'PTT' : 'VAD'}模式`);
+  };
+
+  useEffect(() => {
+    // 修改: 移除從 localStorage 讀取的邏輯，始終預設為 VAD 模式
+    setIsPTTActive(false); // 始終預設為 VAD 模式（持續對話）
+    localStorage.setItem("conversationMode", "VAD");
+    
+    const storedLogsExpanded = localStorage.getItem("logsExpanded");
+    if (storedLogsExpanded) {
+      setIsEventsPaneExpanded(storedLogsExpanded === "true");
+    } else {
+      localStorage.setItem("logsExpanded", "false");
+    }
+    const storedAudioPlaybackEnabled = localStorage.getItem(
+      "audioPlaybackEnabled"
+    );
+    if (storedAudioPlaybackEnabled) {
+      setIsAudioPlaybackEnabled(storedAudioPlaybackEnabled === "true");
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("logsExpanded", isEventsPaneExpanded.toString());
+  }, [isEventsPaneExpanded]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "audioPlaybackEnabled",
+      isAudioPlaybackEnabled.toString()
+    );
+  }, [isAudioPlaybackEnabled]);
+
+  useEffect(() => {
+    if (audioElement.current) {
+      if (isAudioPlaybackEnabled) {
+        audioElement.current.play().catch((err) => {
+          console.warn("Autoplay may be blocked by browser:", err);
+        });
+      } else {
+        audioElement.current.pause();
+      }
+    }
+  }, [isAudioPlaybackEnabled]);
+
+  useEffect(() => {
+    if (sessionStatus === "CONNECTED" && audioElement.current?.srcObject) {
+      const remoteStream = audioElement.current.srcObject as MediaStream;
+      startRecording(remoteStream);
+    }
+
+    return () => {
+      stopRecording();
+    };
+  }, [sessionStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopSession();
+    };
+  }, []);
+
+  return (
+    <div className="text-base flex flex-col bg-gray-100 text-gray-800 relative" 
+         style={{ 
+           height: '100dvh',
+           maxHeight: '100dvh'
+         }}>
+      
       {/* Header */}
       <div className="p-3 sm:p-5 text-lg font-semibold flex justify-between items-center flex-shrink-0 border-b border-gray-200">
         <div
@@ -8322,14 +8962,24 @@ function AppContent() {
         <div className="flex items-center gap-3">
           {/* 測试按鈕 - 可選 */}
           {process.env.NODE_ENV === 'development' && (
-            <button
-              onClick={() => sendSimulatedUserMessage("你好，我想了解營養計劃")}
-              className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm"
-              disabled={sessionStatus !== "CONNECTED"}
-              title="發送測試消息"
-            >
-              測試
-            </button>
+            <>
+              <button
+                onClick={() => sendSimulatedUserMessage("你好，我想了解營養計劃")}
+                className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm"
+                disabled={sessionStatus !== "CONNECTED"}
+                title="發送測試用戶消息"
+              >
+                用戶測試
+              </button>
+              <button
+                onClick={() => sendAIWelcomeMessage()}
+                className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm"
+                disabled={sessionStatus !== "CONNECTED"}
+                title="發送 AI 歡迎消息"
+              >
+                AI歡迎
+              </button>
+            </>
           )}
           
           {/* 麥克風按鈕 - 保持原來的樣式和圖標 */}
