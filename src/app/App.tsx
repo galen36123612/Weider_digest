@@ -9063,7 +9063,6 @@ export default App;*/
 
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
 
 import Image from "next/image";
 
@@ -9099,8 +9098,7 @@ function AppContent() {
     router.replace(`?${params.toString()}`);
   }
 
-  const { transcriptItems, addTranscriptMessage, addTranscriptBreadcrumb } =
-    useTranscript();
+  const { transcriptItems } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
   const [selectedAgentName, setSelectedAgentName] = useState<string>("");
@@ -9183,11 +9181,8 @@ function AppContent() {
       selectedAgentConfigSet &&
       selectedAgentName
     ) {
-      const currentAgent = selectedAgentConfigSet.find(
-        (a) => a.name === selectedAgentName
-      );
-      addTranscriptBreadcrumb(`Agent: ${selectedAgentName}`, currentAgent);
-      updateSession(true);
+      // 移除顯示 Agent breadcrumb，直接更新 session
+      updateSession(); // 更新 session
     }
   }, [selectedAgentConfigSet, selectedAgentName, sessionStatus]);
 
@@ -9200,7 +9195,7 @@ function AppContent() {
     }
   }, [isPTTActive]);
 
-  // 簡化的連接函數 - 移除權限彈窗邏輯
+  // 簡化的連接函數 - 移除權限彈窗
   async function startSession() {
     if (sessionStatus !== "DISCONNECTED") return;
     await connectToRealtime();
@@ -9327,29 +9322,7 @@ function AppContent() {
     setIsListening(false);
   }
 
-  const sendSimulatedUserMessage = (text: string) => {
-    const id = uuidv4().slice(0, 32);
-    addTranscriptMessage(id, "user", text, true);
-
-    sendClientEvent(
-      {
-        type: "conversation.item.create",
-        item: {
-          id,
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text }],
-        },
-      },
-      "(simulated user text message)"
-    );
-    sendClientEvent(
-      { type: "response.create" },
-      "(trigger response after simulated user text message)"
-    );
-  };
-
-  const updateSession = (shouldTriggerResponse: boolean = false) => {
+  const updateSession = () => {
     sendClientEvent(
       { type: "input_audio_buffer.clear" },
       "clear audio buffer on session update"
@@ -9385,10 +9358,6 @@ function AppContent() {
     };
 
     sendClientEvent(sessionUpdateEvent);
-
-    if (shouldTriggerResponse) {
-      sendSimulatedUserMessage("請問最近有腸胃不適問題嗎？");
-    }
   };
 
   const cancelAssistantSpeech = async () => {
@@ -9459,28 +9428,35 @@ function AppContent() {
     sendClientEvent({ type: "response.create" }, "trigger response PTT");
   };
 
-  // 修改綠色麥克風按鈕功能：截斷ChatGPT說話並開啟聆聽
-  const handleMicrophoneInterrupt = () => {
-    if (sessionStatus !== "CONNECTED" || dataChannel?.readyState !== "open") {
-      console.warn("Session not connected");
+  // 處理麥克風按鈕點擊 - 新增打斷功能
+  const handleMicrophoneClick = () => {
+    // 如果 ChatGPT 正在講話，打斷它並開始收聽
+    if (isOutputAudioBufferActive) {
+      console.log("打斷 ChatGPT 講話");
+      cancelAssistantSpeech();
+      // 打斷後如果是 VAD 模式，會自動開始收聽
+      // 如果是 PTT 模式，用戶需要按住說話按鈕
       return;
     }
+    
+    // 否則切換對話模式
+    toggleConversationMode();
+  };
 
-    // 截斷 ChatGPT 說話
-    cancelAssistantSpeech();
+  // 切換 PTT 和 VAD 模式的函數
+  const toggleConversationMode = () => {
+    const newMode = !isPTTActive;
+    setIsPTTActive(newMode);
     
-    // 清空音頻緩衝區並開啟聆聽
-    sendClientEvent({ type: "input_audio_buffer.clear" }, "interrupt and start listening");
+    // 保存到 localStorage
+    localStorage.setItem("conversationMode", newMode ? "PTT" : "VAD");
     
-    // 設置聆聽狀態
-    setIsListening(true);
-    
-    console.log("已截斷助手說話並開啟聆聽模式");
+    console.log(`切換到${newMode ? 'PTT' : 'VAD'}模式`);
   };
 
   useEffect(() => {
-    // 始終預設為 VAD 模式（持續對話）
-    setIsPTTActive(false);
+    // 修改: 移除從 localStorage 讀取的邏輯，始終預設為 VAD 模式
+    setIsPTTActive(false); // 始終預設為 VAD 模式（持續對話）
     localStorage.setItem("conversationMode", "VAD");
     
     const storedLogsExpanded = localStorage.getItem("logsExpanded");
@@ -9545,7 +9521,7 @@ function AppContent() {
            maxHeight: '100dvh'
          }}>
       
-      {/* 頂部標題列 */}
+      {/* Header */}
       <div className="p-3 sm:p-5 text-lg font-semibold flex justify-between items-center flex-shrink-0 border-b border-gray-200">
         <div
           className="flex items-center cursor-pointer"
@@ -9566,18 +9542,23 @@ function AppContent() {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* 綠色麥克風按鈕 - 截斷並開啟聆聽 */}
+          {/* 麥克風按鈕 - 保持原來的樣式和圖標 */}
           <button
-            onClick={handleMicrophoneInterrupt}
+            onClick={handleMicrophoneClick}
             className={`w-12 h-12 rounded-full flex items-center justify-center font-medium transition-all duration-200 relative ${
-              isListening 
-                ? 'bg-green-500 text-white hover:bg-green-600 shadow-md animate-pulse' 
-                : 'bg-green-500 text-white hover:bg-green-600 shadow-md'
+              isPTTActive 
+                ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-md animate-pulse' 
+                : 'bg-green-500 text-white hover:bg-green-600 shadow-md animate-pulse'
             }`}
-            title="截斷並開啟聆聽"
-            disabled={sessionStatus !== "CONNECTED"}
+            title={
+              isOutputAudioBufferActive 
+                ? "點擊打斷 AI 講話" 
+                : isPTTActive 
+                  ? "點擊切換到持續對話模式" 
+                  : "持續對話模式"
+            }
           >
-            {/* 麥克風圖標 */}
+            {/* 始終顯示麥克風圖標 */}
             <svg 
               width="20" 
               height="20" 
@@ -9587,8 +9568,8 @@ function AppContent() {
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
               <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
             </svg>
-            {/* 聆聽狀態指示器 */}
-            {isListening && (
+            {/* 收聽指示燈 - 綠色閃爍 */}
+            {!isPTTActive && isListening && !isOutputAudioBufferActive && (
               <div className="absolute -top-1 -right-1">
                 <div className="w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
                 <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full"></div>
@@ -9598,7 +9579,7 @@ function AppContent() {
         </div>
       </div>
 
-      {/* 主要內容區域 */}
+      {/* Main content area */}
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative min-h-0">
         <Transcript
           userText={userText}
