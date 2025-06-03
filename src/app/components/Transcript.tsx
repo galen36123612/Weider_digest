@@ -2308,6 +2308,327 @@ export default Transcript;*/
 
 // 0528 remove guardrail and pass check icon
 
+/*import React, { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import { TranscriptItem } from "@/app/types";
+import Image from "next/image";
+import { useTranscript } from "@/app/contexts/TranscriptContext";
+import { Copy, Check } from "lucide-react";
+
+export interface TranscriptProps {
+  userText: string;
+  setUserText: (val: string) => void;
+  onSendMessage: () => void;
+  canSend: boolean;
+  downloadRecording: () => void;
+  // Props for microphone functionality
+  handleTalkButtonDown: () => void;
+  handleTalkButtonUp: () => void;
+  isPTTUserSpeaking: boolean;
+  isPTTActive: boolean;
+}
+
+// 複製按鈕組件
+const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // 2秒後恢復原狀
+    } catch (err) {
+      console.error('複製失敗:', err);
+      // 備用方案：使用舊的複製方法
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`
+        flex items-center gap-1 px-2 py-1 rounded text-xs
+        transition-all duration-200 hover:bg-gray-200
+        ${copied ? 'text-green-600 bg-green-50' : 'text-gray-500'}
+      `}
+      title={copied ? "Copied!" : "Copy"}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+};
+
+// Apple-style Microphone Icon Component
+const AppleMicIcon: React.FC<{ isActive: boolean }> = ({ isActive }) => (
+  <svg 
+    width="20" 
+    height="20" 
+    viewBox="0 0 20 20" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={isActive ? "text-white" : "text-gray-700"}
+  >
+    {}
+    <rect 
+      x="7" 
+      y="2" 
+      width="6" 
+      height="10" 
+      rx="3" 
+      fill="currentColor"
+    />
+    {}
+    <path 
+      d="M5 10C5 12.7614 7.23858 15 10 15C12.7614 15 15 12.7614 15 10" 
+      stroke="currentColor" 
+      strokeWidth="1.5" 
+      strokeLinecap="round"
+    />
+    {}
+    <line 
+      x1="10" 
+      y1="15" 
+      x2="10" 
+      y2="18" 
+      stroke="currentColor" 
+      strokeWidth="1.5" 
+      strokeLinecap="round"
+    />
+    <line 
+      x1="7" 
+      y1="18" 
+      x2="13" 
+      y2="18" 
+      stroke="currentColor" 
+      strokeWidth="1.5" 
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+function Transcript({
+  userText,
+  setUserText,
+  onSendMessage,
+  canSend,
+  downloadRecording, // eslint-disable-line @typescript-eslint/no-unused-vars
+  handleTalkButtonDown,
+  handleTalkButtonUp,
+  isPTTUserSpeaking,
+  isPTTActive,
+}: TranscriptProps) {
+  const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const [prevLogs, setPrevLogs] = useState<TranscriptItem[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function scrollToBottom() {
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }
+
+  useEffect(() => {
+    const hasNewMessage = transcriptItems.length > prevLogs.length;
+    const hasUpdatedMessage = transcriptItems.some((newItem, index) => {
+      const oldItem = prevLogs[index];
+      return (
+        oldItem &&
+        (newItem.title !== oldItem.title || newItem.data !== oldItem.data)
+      );
+    });
+
+    if (hasNewMessage || hasUpdatedMessage) {
+      scrollToBottom();
+    }
+
+    setPrevLogs(transcriptItems);
+  }, [transcriptItems]);
+
+  // Autofocus on text box input on load
+  useEffect(() => {
+    if (canSend && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [canSend]);
+
+  return (
+    <div className="flex flex-col flex-1 bg-white min-h-0 rounded-xl">
+      <div className="flex flex-col flex-1 min-h-0">
+        {}
+        <div
+          ref={transcriptRef}
+          className="overflow-auto p-4 flex flex-col gap-y-4 h-full"
+        >
+          {transcriptItems.map((item) => {
+            const {
+              itemId,
+              type,
+              role,
+              data,
+              expanded,
+              timestamp,
+              title = "",
+              isHidden,
+            } = item;
+
+            if (isHidden) {
+              return null;
+            }
+
+            if (type === "MESSAGE") {
+              const isUser = role === "user";
+              const containerClasses = `flex justify-end flex-col ${
+                isUser ? "items-end" : "items-start"
+              }`;
+              const bubbleBase = `max-w-lg p-3 rounded-xl ${
+                isUser ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-black"
+              }`;
+              const isBracketedMessage =
+                title.startsWith("[") && title.endsWith("]");
+              const messageStyle = isBracketedMessage
+                ? "italic text-gray-400"
+                : "";
+              const displayTitle = isBracketedMessage
+                ? title.slice(1, -1)
+                : title;
+
+              return (
+                <div key={itemId} className={containerClasses}>
+                  <div className="max-w-lg relative">
+                    <div className={bubbleBase}>
+                      <div
+                        className={`text-xs ${
+                          isUser ? "text-gray-400" : "text-gray-500"
+                        } font-mono`}
+                      >
+                        {timestamp}
+                      </div>
+                      <div className={`whitespace-pre-wrap ${messageStyle}`}>
+                        <ReactMarkdown>{displayTitle}</ReactMarkdown>
+                      </div>
+                    </div>
+                    
+                    {}
+                    {!isUser && (
+                      <div className="absolute top-2 right-2">
+                        <CopyButton text={displayTitle} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            } else if (type === "BREADCRUMB") {
+              return (
+                <div
+                  key={itemId}
+                  className="flex flex-col justify-start items-start text-gray-500 text-sm"
+                >
+                  <span className="text-xs font-mono">{timestamp}</span>
+                  <div
+                    className={`whitespace-pre-wrap flex items-center font-mono text-sm text-gray-800 ${
+                      data ? "cursor-pointer" : ""
+                    }`}
+                    onClick={() => data && toggleTranscriptItemExpand(itemId)}
+                  >
+                    {data && (
+                      <span
+                        className={`text-gray-400 mr-1 transform transition-transform duration-200 select-none font-mono ${
+                          expanded ? "rotate-90" : "rotate-0"
+                        }`}
+                      >
+                        ▶
+                      </span>
+                    )}
+                    {title}
+                  </div>
+                  {expanded && data && (
+                    <div className="text-gray-800 text-left">
+                      <pre className="border-l-2 ml-1 border-gray-200 whitespace-pre-wrap break-words font-mono text-xs mb-2 mt-2 pl-2">
+                        {JSON.stringify(data, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              );
+            } else {
+              // Fallback if type is neither MESSAGE nor BREADCRUMB
+              return (
+                <div
+                  key={itemId}
+                  className="flex justify-center text-gray-500 text-sm italic font-mono"
+                >
+                  Unknown item type: {type}{" "}
+                  <span className="ml-2 text-xs">{timestamp}</span>
+                </div>
+              );
+            }
+          })}
+        </div>
+      </div>
+
+      <div className="p-4 flex items-center gap-x-2 flex-shrink-0 border-t border-gray-200">
+        <input
+          ref={inputRef}
+          type="text"
+          value={userText}
+          onChange={(e) => setUserText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && canSend) {
+              onSendMessage();
+            }
+          }}
+          className="flex-1 px-4 py-2 focus:outline-none"
+          placeholder="請輸入文字..."
+        />
+        
+        {}
+        {isPTTActive && (
+          <button
+            onClick={() => {
+              if (isPTTUserSpeaking) {
+                handleTalkButtonUp(); // 停止錄音並發送
+              } else {
+                handleTalkButtonDown(); // 開始錄音
+              }
+            }}
+            disabled={!canSend}
+            className={`${
+              isPTTUserSpeaking 
+                ? "bg-red-500 text-white" 
+                : "bg-gray-200 text-gray-700"
+            } rounded-full p-2 disabled:opacity-50 transition-colors`}
+            aria-label={isPTTUserSpeaking ? "Stop recording and send" : "Start recording"}
+          >
+            <AppleMicIcon isActive={isPTTUserSpeaking} />
+          </button>
+        )}
+        
+        <button
+          onClick={onSendMessage}
+          disabled={!canSend || !userText.trim()}
+          className="bg-gray-900 text-white rounded-full px-2 py-2 disabled:opacity-50"
+        >
+          <Image src="arrow.svg" alt="Send" width={24} height={24} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default Transcript;*/
+
+// 0603 Testing add two button
+
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { TranscriptItem } from "@/app/types";
@@ -2326,6 +2647,8 @@ export interface TranscriptProps {
   handleTalkButtonUp: () => void;
   isPTTUserSpeaking: boolean;
   isPTTActive: boolean;
+  // 新增：快捷訊息處理函數
+  onQuickMessage: (message: string) => void;
 }
 
 // 複製按鈕組件
@@ -2425,6 +2748,7 @@ function Transcript({
   handleTalkButtonUp,
   isPTTUserSpeaking,
   isPTTActive,
+  onQuickMessage, // 新增的 prop
 }: TranscriptProps) {
   const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -2576,6 +2900,29 @@ function Transcript({
         </div>
       </div>
 
+      {/* 快捷按鈕區域 - 在輸入欄上方 */}
+      <div className="px-4 pb-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => onQuickMessage("我最近有腸胃、消化問題")}
+            disabled={!canSend}
+            className="flex-1 px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+          >
+            <span className="text-base">🍽️</span>
+            腸胃消化問題
+          </button>
+          <button
+            onClick={() => onQuickMessage("我想改善睡眠問題")}
+            disabled={!canSend}
+            className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+          >
+            <span className="text-base">😴</span>
+            改善睡眠問題
+          </button>
+        </div>
+      </div>
+
+      {/* 輸入欄區域 */}
       <div className="p-4 flex items-center gap-x-2 flex-shrink-0 border-t border-gray-200">
         <input
           ref={inputRef}
